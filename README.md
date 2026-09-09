@@ -11,6 +11,8 @@
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg)](#)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-贡献)
 
+简体中文 | [English](README_EN.md)
+
 </div>
 
 ---
