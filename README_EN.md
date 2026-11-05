@@ -157,8 +157,8 @@ $ ssx prod:/etc/nginx/    ← keep drilling down
 | Command | Description |
 |---|---|
 | `ssx <host>` | Direct login |
-| `ssx host:/path dest` | Download |
-| `ssx localfile host:/path` | Upload |
+| `ssx host:/path dest` | Download (`~` = remote home directory is supported) |
+| `ssx localfile host:/path` | Upload (`~` = remote home directory is supported) |
 | `ssx list` | List all hosts |
 | `ssx edit` | Edit config |
 | `ssx help` | Help |
@@ -182,6 +182,12 @@ Open a new terminal or run `source ~/.bashrc`. Completion is registered at sourc
 
 **Q: First completion is slow?**
 That's the initial SSH handshake. Subsequent completions ride the multiplexed connection at millisecond speed.
+
+**Q: Completion doesn't show dotfiles (`.bashrc`, `.ssh/`, ...)?**
+Same rule as local bash completion: type a `.` prefix before Tab (e.g. `ssx host:~/.<Tab>`) and they appear.
+
+**Q: Does remote path support the home directory `~`?**
+Yes. `ssx host:~/logs`, Tab completion on `ssx host:~/<Tab>`, and the `~user` form all work — for uploads and downloads too.
 
 **Q: Can native `ssh` / `scp` use this config too?**
 Add this line *above* the ssx source line in `~/.bashrc`:

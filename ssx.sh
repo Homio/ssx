@@ -161,42 +161,77 @@ __complete_hosts)
 
 __complete_remote_path)
     hostname="$2"; rpath="$3"
-    if [[ -z "$rpath" || "$rpath" == "/" ]]; then
-        dir="/"; prefix=""
-    elif [[ "$rpath" == */ ]]; then
-        dir="$rpath"; prefix=""
-    elif [[ "$rpath" == */* ]]; then
-        dir="${rpath%/*}"
-        if [[ -z "$dir" ]]; then dir="/"; else dir="$dir/"; fi
-        prefix="${rpath##*/}"
+    # ~ 前缀（~ / ~user）：该段留在引号外，交由远端 shell 展开为家目录
+    tilde=""
+    if [[ "$rpath" == \~* ]]; then
+        tilde="${rpath%%/*}"
+        rpath="${rpath:${#tilde}}"
+        rpath="${rpath#/}"
+    fi
+    if [[ -n "$tilde" ]]; then
+        # 相对家目录的路径
+        if [[ -z "$rpath" ]]; then
+            dir=""; prefix=""
+        elif [[ "$rpath" == */ ]]; then
+            dir="$rpath"; prefix=""
+        elif [[ "$rpath" == */* ]]; then
+            dir="${rpath%/*}/"; prefix="${rpath##*/}"
+        else
+            dir=""; prefix="$rpath"
+        fi
     else
-        # 顶层前缀（如 host:et），应列出根目录下匹配项，而不是查 /et/
-        dir="/"; prefix="$rpath"
+        if [[ -z "$rpath" || "$rpath" == "/" ]]; then
+            dir="/"; prefix=""
+        elif [[ "$rpath" == */ ]]; then
+            dir="$rpath"; prefix=""
+        elif [[ "$rpath" == */* ]]; then
+            dir="${rpath%/*}"
+            if [[ -z "$dir" ]]; then dir="/"; else dir="$dir/"; fi
+            prefix="${rpath##*/}"
+        else
+            # 顶层前缀（如 host:et），应列出根目录下匹配项，而不是查 /et/
+            dir="/"; prefix="$rpath"
+        fi
     fi
     authinfo=$(_ssx_auth "$hostname") || exit 0
     IFS='|' read -r atype avalue port user addr <<< "$authinfo"
     [[ -z "$user" || -z "$addr" ]] && exit 0
-    
-    # ⚠ 开启 SSH 多路复用，后续 Tab 连接秒建，解决迟钝问题
+
+    # 隐藏文件与 bash 本地补全同规则：输入 . 前缀（如 host:~/.) 才列出
+    ls_flags="-1p"
+    [[ "$prefix" == .* ]] && ls_flags="-1pA"
+
+    # 远端路径单引号包裹并转义内嵌单引号；~ 段在引号外才能被远端展开
+    q_dir="'${dir//\'/\'\\\'\'}'"
+    if [[ -n "$tilde" ]]; then
+        ls_path="${tilde}/${q_dir}"
+        out_prefix="${hostname}:${tilde}/${dir}"
+    else
+        ls_path="${q_dir}"
+        out_prefix="${hostname}:${dir}"
+    fi
+
+    # ⚡ 开启 SSH 多路复用，后续 Tab 连接秒建，解决迟钝问题
     # 注意：此分支位于脚本顶层而非函数内，不能用 local
     cm_dir="$HOME/.ssx_cm"
     mkdir -p -m 700 "$cm_dir" 2>/dev/null
     ssh_base="-o StrictHostKeyChecking=no -o ConnectTimeout=5 -o LogLevel=ERROR"
     ssh_base="$ssh_base -o ControlMaster=auto -o ControlPath=$cm_dir/%r@%h:%p -o ControlPersist=300"
     [[ -n "$port" && "$port" != "22" ]] && ssh_base="$ssh_base -p $port"
-    
+
     case "$atype" in
         key)  listing=$(command ssh $ssh_base -i "$avalue" "${user}@${addr}" \
-                        "command ls -1p '${dir}' 2>/dev/null" 2>/dev/null < /dev/null) ;;
+                        "command ls ${ls_flags} ${ls_path} 2>/dev/null" 2>/dev/null < /dev/null) ;;
         pass) listing=$(sshpass -p "$avalue" command ssh $ssh_base "${user}@${addr}" \
-                        "command ls -1p '${dir}' 2>/dev/null" 2>/dev/null < /dev/null) ;;
+                        "command ls ${ls_flags} ${ls_path} 2>/dev/null" 2>/dev/null < /dev/null) ;;
         *)    listing=$(command ssh $ssh_base "${user}@${addr}" \
-                        "command ls -1p '${dir}' 2>/dev/null" 2>/dev/null < /dev/null) ;;
+                        "command ls ${ls_flags} ${ls_path} 2>/dev/null" 2>/dev/null < /dev/null) ;;
     esac
     while IFS= read -r item; do
         [[ -z "$item" ]] && continue
+        if [[ "$prefix" != .* && "$item" == .* ]]; then continue; fi
         if [[ -z "$prefix" ]] || [[ "$item" == "$prefix"* ]]; then
-            echo "${hostname}:${dir}${item}"
+            echo "${out_prefix}${item}"
         fi
     done <<< "$listing"
     ;;
@@ -416,10 +451,12 @@ ssx — 一个脚本 + 一个 YAML 配置，搞定 SSH/SCP
 
 用法:
   ssx <别名>                 # Tab 补全主机名，直连
-  ssx <别名>:/path  dest     # Tab 补全远端路径，下载
+  ssx <别名>:/path  dest     # Tab 补全远端路径，下载（~ = 远端家目录）
   ssx src <别名>:/path       # Tab 补全远端路径，上传
   ssx list                   # 列出所有主机
   ssx edit                   # 编辑配置
+
+提示: 补全输入 . 前缀（如 ssx 别名:~/.）才列出隐藏文件，与 bash 本地补全一致
 
 安装/升级/卸载（仅限源码目录，安装后的 ssx 命令不提供）:
   bash ssx.sh install              # 首次安装；重复执行即升级到当前目录版本
